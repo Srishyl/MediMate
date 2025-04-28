@@ -1,0 +1,2 @@
+This directory would normally contain face-api.js model files.
+For the demo, we're simulating face detection without actual models.

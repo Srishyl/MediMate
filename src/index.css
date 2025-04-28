@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 59 130 246; /* blue-500 */
+    --color-primary-light: 96 165 250; /* blue-400 */
+    --color-primary-dark: 37 99 235; /* blue-600 */
+    
+    --color-secondary: 16 185 129; /* emerald-500 */
+    --color-secondary-light: 52 211 153; /* emerald-400 */
+    --color-secondary-dark: 5 150 105; /* emerald-600 */
+    
+    --color-accent: 249 115 22; /* orange-500 */
+    --color-accent-light: 251 146 60; /* orange-400 */
+    --color-accent-dark: 234 88 12; /* orange-600 */
+    
+    --color-background: 249 250 251; /* gray-50 */
+    --color-foreground: 255 255 255; /* white */
+    --color-text: 17 24 39; /* gray-900 */
+    --color-text-light: 107 114 128; /* gray-500 */
+  }
+
+  body {
+    @apply bg-gradient-to-br from-blue-50 to-white min-h-screen font-sans text-gray-900 antialiased;
+    background-image: url('/images/pill-pattern-bg.png');
+    background-size: cover;
+    background-attachment: fixed;
+    background-blend-mode: overlay;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-medium tracking-tight;
+  }
+
+  h1 {
+    @apply text-4xl md:text-5xl leading-[1.2];
+  }
+
+  h2 {
+    @apply text-3xl md:text-4xl leading-[1.2];
+  }
+
+  h3 {
+    @apply text-2xl md:text-3xl leading-[1.2];
+  }
+
+  p {
+    @apply leading-relaxed;
+  }
+}
+
+@layer components {
+  .pill-card {
+    @apply relative bg-white rounded-2xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-lg;
+  }
+  
+  .pill-card-active {
+    @apply border-2 border-blue-500;
+  }
+  
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-opacity-50;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-500 hover:bg-blue-600 text-white focus:ring-blue-400;
+  }
+  
+  .btn-secondary {
+    @apply bg-emerald-500 hover:bg-emerald-600 text-white focus:ring-emerald-400;
+  }
+  
+  .btn-accent {
+    @apply bg-orange-500 hover:bg-orange-600 text-white focus:ring-orange-400;
+  }
+  
+  .btn-outline {
+    @apply border-2 bg-transparent hover:bg-gray-50;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+  
+  .card-glow {
+    @apply before:absolute before:inset-0 before:bg-gradient-to-r before:from-blue-400/10 before:to-emerald-400/10 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-500;
+  }
+
+  .pill-animation {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+    100% { transform: translateY(0px); }
+  }
+
+  .breathe {
+    animation: breathe 4s infinite ease-in-out;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+
+  .panel-gradient {
+    @apply bg-gradient-to-br from-blue-50 to-emerald-50;
+  }
+}
