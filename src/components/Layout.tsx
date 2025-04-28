@@ -13,15 +13,38 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow-sm z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link to="/" className="flex items-center space-x-2">
-            <Pill className="h-8 w-8 text-blue-500" />
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-emerald-500 bg-clip-text text-transparent">
-              MediMate
-            </span>
-          </Link>
+      {/* Header with top navigation */}
+      <header className="bg-white shadow-sm z-10 px-4">
+        <div className="w-full py-4 flex justify-between items-center">
+          <div className="flex items-center space-x-8">
+            <Link to="/" className="flex items-center space-x-2">
+              <Pill className="h-8 w-8 text-blue-500" />
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-emerald-500 bg-clip-text text-transparent">
+                MediMate
+              </span>
+            </Link>
+            {/* Top navigation links */}
+            <nav className="hidden md:flex items-center space-x-6 ml-8">
+              <Link 
+                to="/" 
+                className={`flex items-center space-x-2 text-lg font-medium transition-colors ${
+                  location.pathname === '/' ? 'text-blue-600' : 'text-gray-700 hover:text-blue-500'
+                }`}
+              >
+                <Home className="h-5 w-5" />
+                <span>Dashboard</span>
+              </Link>
+              <Link 
+                to="/schedule" 
+                className={`flex items-center space-x-2 text-lg font-medium transition-colors ${
+                  location.pathname === '/schedule' ? 'text-blue-600' : 'text-gray-700 hover:text-blue-500'
+                }`}
+              >
+                <Calendar className="h-5 w-5" />
+                <span>Pill Schedule</span>
+              </Link>
+            </nav>
+          </div>
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -65,34 +88,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           >
             <Calendar className="h-6 w-6" />
             <span className="text-xs mt-1">Schedule</span>
-          </Link>
-        </div>
-      </nav>
-
-      {/* Sidebar on desktop */}
-      <nav className="hidden md:block fixed left-0 top-0 bottom-0 w-64 bg-white shadow-lg z-20 pt-20">
-        <div className="flex flex-col p-4 space-y-2">
-          <Link 
-            to="/" 
-            className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
-              location.pathname === '/' 
-                ? 'bg-blue-50 text-blue-700' 
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <Home className="h-5 w-5" />
-            <span>Dashboard</span>
-          </Link>
-          <Link 
-            to="/schedule" 
-            className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
-              location.pathname === '/schedule' 
-                ? 'bg-blue-50 text-blue-700' 
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <Calendar className="h-5 w-5" />
-            <span>Pill Schedule</span>
           </Link>
         </div>
       </nav>

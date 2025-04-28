@@ -1,108 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PillSchedule, usePills } from '../context/PillContext';
 import { useUser } from '../context/UserContext';
 import PillCard from '../components/PillCard';
-import { Bell, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Bell, Calendar, Clock, CheckCircle2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useUser();
-  const { schedules, history, getTodaySchedules, getUpcomingReminders, loadSchedules } = usePills();
-  const [todaySchedules, setTodaySchedules] = useState<PillSchedule[]>([]);
-  const [nextReminder, setNextReminder] = useState<PillSchedule | null>(null);
-  const [completedToday, setCompletedToday] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { schedules, history } = usePills();
   const navigate = useNavigate();
 
-  const loadDashboardData = async () => {
-    try {
-      console.log('Starting to load dashboard data');
-      setLoading(true);
-      setError(null);
+  // Get today's day of week and date string
+  const today = new Date();
+  const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
+  const todayStr = today.toISOString().split('T')[0];
 
-      if (!user) {
-        console.error('No user found when loading dashboard');
-        throw new Error('User must be logged in to view dashboard');
-      }
+  // All schedules for today
+  const todaySchedules = schedules.filter(
+    s => s.active && s.daysOfWeek.includes(dayOfWeek)
+  );
+  const totalPillsScheduled = todaySchedules.length;
+  const todayScheduleIds = todaySchedules.map(s => s.id);
 
-      // First, ensure schedules are loaded
-      console.log('Loading schedules...');
-      await loadSchedules();
-      console.log('Schedules loaded successfully');
+  // Unique schedule IDs that have been taken today
+  const takenScheduleIds = new Set(
+    history
+      .filter(item => {
+        if (!item || !item.takenAt) return false;
+        const itemDate = new Date(item.takenAt).toISOString().split('T')[0];
+        return (
+          itemDate === todayStr &&
+          item.status === 'taken' &&
+          todayScheduleIds.includes(item.scheduleId)
+        );
+      })
+      .map(item => item.scheduleId)
+  );
+  const pillsTakenToday = takenScheduleIds.size;
 
-      // Get today's schedules
-      console.log('Fetching today\'s schedules');
-      const today = await getTodaySchedules();
-      console.log('Today\'s schedules:', today);
-      setTodaySchedules(today);
-      
-      // Get upcoming reminders
-      console.log('Fetching upcoming reminders');
-      const upcoming = await getUpcomingReminders();
-      console.log('Upcoming reminders:', upcoming);
-      if (upcoming.length > 0) {
-        setNextReminder(upcoming[0]);
-      } else {
-        setNextReminder(null);
-      }
-      
-      // Count completed for today - only if we have schedules
-      if (today.length > 0) {
-        const today2 = new Date();
-        const todayStr = today2.toISOString().split('T')[0];
-        console.log('Counting completed pills for date:', todayStr);
-        
-        const completedCount = history.filter(item => {
-          if (!item || !item.takenAt) return false;
-          const itemDate = new Date(item.takenAt).toISOString().split('T')[0];
-          return itemDate === todayStr && item.status === 'taken';
-        }).length;
-        console.log('Completed count:', completedCount);
-        
-        setCompletedToday(completedCount);
-      } else {
-        setCompletedToday(0);
-      }
-      
-      console.log('Dashboard data loaded successfully');
-    } catch (err) {
-      console.error('Error loading dashboard data:', err);
-      if (err instanceof Error) {
-        console.error('Error details:', err.message, err.stack);
-        // Check for specific error messages
-        if (err.message.includes('Invalid schedules data')) {
-          setError('There was a problem with the schedule data. Please try again.');
-        } else if (err.message.includes('User must be logged in')) {
-          setError('Please log in to view your dashboard.');
-        } else if (err.message.includes('Failed to load today\'s schedules')) {
-          setError('Unable to load your pill schedule. Please try again.');
-        } else {
-          setError(err.message);
-        }
-      } else {
-        setError('Failed to load dashboard data. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Pills still to be taken today
+  const pillsToBeTakenToday = todaySchedules.filter(s => !takenScheduleIds.has(s.id));
 
-  const handleRetry = () => {
-    console.log('Retrying dashboard data load...');
-    loadDashboardData();
-  };
-
-  useEffect(() => {
-    if (user) {
-      console.log('User changed, loading dashboard data...');
-      loadDashboardData();
-    }
-  }, [user]);
-
-  const handleReminderClick = (id: string) => {
-    navigate(`/reminder/${id}`);
-  };
+  // Next reminder: the next pill that is still to be taken today
+  const nextReminder = pillsToBeTakenToday
+    .filter(s => {
+      const now = new Date();
+      const scheduleTime = new Date();
+      scheduleTime.setHours(s.timeHour, s.timeMinute, 0, 0);
+      return scheduleTime > now;
+    })
+    .sort((a, b) => {
+      const aTime = a.timeHour * 60 + a.timeMinute;
+      const bTime = b.timeHour * 60 + b.timeMinute;
+      return aTime - bTime;
+    })[0] || null;
 
   const getTimeOfDay = () => {
     const hour = new Date().getHours();
@@ -123,35 +74,9 @@ const Dashboard: React.FC = () => {
     return `${formattedHour}:${formattedMinute} ${period}`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-50 p-6 rounded-xl shadow-md max-w-md w-full">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-              <Bell className="h-5 w-5 text-red-500" />
-            </div>
-            <h2 className="text-xl font-bold text-red-700">Error Loading Dashboard</h2>
-          </div>
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={handleRetry}
-            className="btn btn-primary w-full"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleReminderClick = (id: string) => {
+    navigate(`/reminder/${id}`);
+  };
 
   return (
     <div className="pb-16 md:pb-0 md:pl-64">
@@ -159,7 +84,6 @@ const Dashboard: React.FC = () => {
         <h1 className="text-2xl md:text-3xl font-bold">{getGreeting()}</h1>
         <p className="text-gray-600 mt-1">Here's your pill schedule for today</p>
       </header>
-      
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Today's Overview Card */}
         <div className="pill-card panel-gradient overflow-hidden col-span-1 md:col-span-2">
@@ -168,7 +92,6 @@ const Dashboard: React.FC = () => {
               <Calendar className="h-5 w-5 text-blue-500" />
               <h3 className="font-semibold">Today's Overview</h3>
             </div>
-            
             <div className="flex flex-wrap">
               <div className="w-1/2 p-2">
                 <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -178,10 +101,9 @@ const Dashboard: React.FC = () => {
                     </div>
                     <span className="text-sm font-medium">Today's Pills</span>
                   </div>
-                  <p className="text-2xl font-bold">{todaySchedules.length}</p>
+                  <p className="text-2xl font-bold">{pillsToBeTakenToday.length}</p>
                 </div>
               </div>
-              
               <div className="w-1/2 p-2">
                 <div className="bg-white rounded-xl p-4 shadow-sm">
                   <div className="flex items-center space-x-2 mb-2">
@@ -190,11 +112,10 @@ const Dashboard: React.FC = () => {
                     </div>
                     <span className="text-sm font-medium">Completed</span>
                   </div>
-                  <p className="text-2xl font-bold">{completedToday} of {todaySchedules.length}</p>
+                  <p className="text-2xl font-bold">{pillsTakenToday} of {totalPillsScheduled}</p>
                 </div>
               </div>
             </div>
-            
             {nextReminder && (
               <div className="mt-4 bg-white p-4 rounded-xl shadow-sm">
                 <div className="flex items-center space-x-2 mb-3">
@@ -203,7 +124,6 @@ const Dashboard: React.FC = () => {
                   </div>
                   <span className="text-sm font-medium">Next Reminder</span>
                 </div>
-                
                 <div className="flex justify-between items-center">
                   <div>
                     <h4 className="font-semibold">{nextReminder.pillName}</h4>
@@ -214,7 +134,6 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm text-gray-600">{nextReminder.time}</p>
                   </div>
                 </div>
-                
                 <button 
                   onClick={() => handleReminderClick(nextReminder.id)}
                   className="mt-3 w-full btn btn-primary"
@@ -225,66 +144,36 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         </div>
-        
-        {/* Weekly Progress */}
-        <div className="pill-card panel-gradient">
+      </div>
+      {/* Today's Pills Section - match width to Today's Overview */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="pill-card panel-gradient overflow-hidden col-span-1 md:col-span-2">
           <div className="p-5">
-            <div className="flex items-center space-x-2 mb-4">
-              <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              <h3 className="font-semibold">Weekly Progress</h3>
-            </div>
-            
-            <div className="space-y-4">
-              {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => {
-                const isToday = new Date().getDay() === index;
-                const progress = isToday 
-                  ? todaySchedules.length > 0 
-                    ? (completedToday / todaySchedules.length) * 100 
-                    : 0
-                  : Math.random() > 0.3 ? 100 : Math.floor(Math.random() * 100);
-                
-                return (
-                  <div key={day} className="flex items-center space-x-3">
-                    <span className={`text-sm w-24 ${isToday ? 'font-bold' : ''}`}>{day}</span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
-                        style={{ width: `${progress}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-sm font-medium">{Math.round(progress)}%</span>
-                  </div>
-                );
-              })}
-            </div>
+            <h2 className="text-xl font-bold mb-4">Today's Pills</h2>
+            {pillsToBeTakenToday.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {pillsToBeTakenToday.map(schedule => (
+                  <PillCard 
+                    key={schedule.id}
+                    schedule={schedule}
+                    status="upcoming"
+                    onClick={() => handleReminderClick(schedule.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-6 text-center">
+                <p className="text-gray-600">No pills scheduled for today.</p>
+                <button 
+                  onClick={() => navigate('/schedule')}
+                  className="mt-4 btn btn-primary"
+                >
+                  Add New Schedule
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-      
-      <div className="mt-6">
-        <h2 className="text-xl font-bold mb-4">Today's Pills</h2>
-        {todaySchedules.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {todaySchedules.map(schedule => (
-              <PillCard 
-                key={schedule.id}
-                schedule={schedule}
-                status="upcoming"
-                onClick={() => handleReminderClick(schedule.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="bg-gray-50 rounded-lg p-6 text-center">
-            <p className="text-gray-600">No pills scheduled for today.</p>
-            <button 
-              onClick={() => navigate('/schedule')}
-              className="mt-4 btn btn-primary"
-            >
-              Add New Schedule
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
