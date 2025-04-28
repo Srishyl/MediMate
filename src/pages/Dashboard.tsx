@@ -7,36 +7,98 @@ import { Bell, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useUser();
-  const { schedules, history, getTodaySchedules, getUpcomingReminders, loading, error } = usePills();
+  const { schedules, history, getTodaySchedules, getUpcomingReminders, loadSchedules } = usePills();
   const [todaySchedules, setTodaySchedules] = useState<PillSchedule[]>([]);
   const [nextReminder, setNextReminder] = useState<PillSchedule | null>(null);
   const [completedToday, setCompletedToday] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!loading) {
+  const loadDashboardData = async () => {
+    try {
+      console.log('Starting to load dashboard data');
+      setLoading(true);
+      setError(null);
+
+      if (!user) {
+        console.error('No user found when loading dashboard');
+        throw new Error('User must be logged in to view dashboard');
+      }
+
+      // First, ensure schedules are loaded
+      console.log('Loading schedules...');
+      await loadSchedules();
+      console.log('Schedules loaded successfully');
+
       // Get today's schedules
-      const today = getTodaySchedules();
+      console.log('Fetching today\'s schedules');
+      const today = await getTodaySchedules();
+      console.log('Today\'s schedules:', today);
       setTodaySchedules(today);
       
-      // Find next upcoming reminder
-      const upcoming = getUpcomingReminders();
+      // Get upcoming reminders
+      console.log('Fetching upcoming reminders');
+      const upcoming = await getUpcomingReminders();
+      console.log('Upcoming reminders:', upcoming);
       if (upcoming.length > 0) {
         setNextReminder(upcoming[0]);
+      } else {
+        setNextReminder(null);
       }
       
-      // Count completed for today
-      const today2 = new Date();
-      const todayStr = today2.toISOString().split('T')[0];
+      // Count completed for today - only if we have schedules
+      if (today.length > 0) {
+        const today2 = new Date();
+        const todayStr = today2.toISOString().split('T')[0];
+        console.log('Counting completed pills for date:', todayStr);
+        
+        const completedCount = history.filter(item => {
+          if (!item || !item.takenAt) return false;
+          const itemDate = new Date(item.takenAt).toISOString().split('T')[0];
+          return itemDate === todayStr && item.status === 'taken';
+        }).length;
+        console.log('Completed count:', completedCount);
+        
+        setCompletedToday(completedCount);
+      } else {
+        setCompletedToday(0);
+      }
       
-      const completedCount = history.filter(item => {
-        const itemDate = new Date(item.takenAt).toISOString().split('T')[0];
-        return itemDate === todayStr && item.status === 'taken';
-      }).length;
-      
-      setCompletedToday(completedCount);
+      console.log('Dashboard data loaded successfully');
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      if (err instanceof Error) {
+        console.error('Error details:', err.message, err.stack);
+        // Check for specific error messages
+        if (err.message.includes('Invalid schedules data')) {
+          setError('There was a problem with the schedule data. Please try again.');
+        } else if (err.message.includes('User must be logged in')) {
+          setError('Please log in to view your dashboard.');
+        } else if (err.message.includes('Failed to load today\'s schedules')) {
+          setError('Unable to load your pill schedule. Please try again.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Failed to load dashboard data. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [schedules, history, getTodaySchedules, getUpcomingReminders, loading]);
+  };
+
+  const handleRetry = () => {
+    console.log('Retrying dashboard data load...');
+    loadDashboardData();
+  };
+
+  useEffect(() => {
+    if (user) {
+      console.log('User changed, loading dashboard data...');
+      loadDashboardData();
+    }
+  }, [user]);
 
   const handleReminderClick = (id: string) => {
     navigate(`/reminder/${id}`);
@@ -74,12 +136,14 @@ const Dashboard: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="bg-red-50 p-6 rounded-xl shadow-md max-w-md w-full">
           <div className="flex items-center space-x-3 mb-4">
-            <AlertCircle className="h-6 w-6 text-red-500" />
+            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-red-500" />
+            </div>
             <h2 className="text-xl font-bold text-red-700">Error Loading Dashboard</h2>
           </div>
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleRetry}
             className="btn btn-primary w-full"
           >
             Try Again

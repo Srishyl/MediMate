@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePills, PillSchedule } from '../context/PillContext';
 import CameraDetection from '../components/CameraDetection';
-import { Clock, Bell, Volume2, VolumeX, CheckCircle2 } from 'lucide-react';
+import { Clock, Bell, Volume2, VolumeX, CheckCircle2, Camera, Hand } from 'lucide-react';
 
 const PillReminder: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { schedules, recordPillTaken } = usePills();
+  const { schedules, recordPillTaken, updateRemainingPills } = usePills();
   
   const [schedule, setSchedule] = useState<PillSchedule | null>(null);
   const [reminderActive, setReminderActive] = useState(false);
@@ -17,6 +17,8 @@ const PillReminder: React.FC = () => {
   const [audio] = useState<HTMLAudioElement | null>(
     typeof Audio !== 'undefined' ? new Audio('/sounds/reminder.mp3') : null
   );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     if (id) {
@@ -73,9 +75,45 @@ const PillReminder: React.FC = () => {
     setShowCamera(true);
   };
 
-  const handlePillTaken = () => {
-    if (id) {
-      recordPillTaken(id, reminderActive);
+  const handleManualTakePill = async () => {
+    if (!id) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Update remaining pills first
+      await updateRemainingPills(id);
+      
+      // Then record the pill taken
+      await recordPillTaken(id, reminderActive);
+      setPillTaken(true);
+      stopSound();
+      
+      // Navigate back after a delay
+      setTimeout(() => {
+        navigate('/');
+      }, 3000);
+    } catch (err) {
+      setError('Failed to record pill intake. Please try again.');
+      console.error('Error recording pill intake:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePillTaken = async () => {
+    if (!id) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Update remaining pills first
+      await updateRemainingPills(id);
+      
+      // Then record the pill taken
+      await recordPillTaken(id, reminderActive);
       setPillTaken(true);
       setShowCamera(false);
       stopSound();
@@ -84,6 +122,11 @@ const PillReminder: React.FC = () => {
       setTimeout(() => {
         navigate('/');
       }, 3000);
+    } catch (err) {
+      setError('Failed to record pill intake. Please try again.');
+      console.error('Error recording pill intake:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,6 +169,12 @@ const PillReminder: React.FC = () => {
           <div className="bg-white rounded-xl shadow-lg p-6">
             <h2 className="text-2xl font-bold mb-6 text-center">Verifying Pill Intake</h2>
             <CameraDetection onPillTaken={handlePillTaken} />
+            <button
+              onClick={() => setShowCamera(false)}
+              className="w-full mt-4 btn btn-outline border-gray-300 text-gray-700"
+            >
+              Cancel
+            </button>
           </div>
         ) : (
           // Reminder state
@@ -153,6 +202,11 @@ const PillReminder: React.FC = () => {
                 {schedule.dosage}
               </div>
               
+              <div className="mt-4 text-sm text-gray-500">
+                <p>Remaining Pills: {schedule.remainingPills} of {schedule.totalPills}</p>
+                <p>Expiry Date: {new Date(schedule.expiryDate).toLocaleDateString()}</p>
+              </div>
+              
               <div className="mt-8 flex items-center justify-center space-x-4">
                 <div className="text-center">
                   <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mb-2 mx-auto">
@@ -173,17 +227,35 @@ const PillReminder: React.FC = () => {
                 )}
               </div>
               
+              {error && (
+                <div className="mt-4 bg-red-50 text-red-600 p-3 rounded-lg">
+                  {error}
+                </div>
+              )}
+              
               <div className="mt-10 flex flex-col space-y-4">
                 <button
                   onClick={handleTakePill}
-                  className="btn btn-primary py-4 text-lg"
+                  className="btn btn-primary py-4 text-lg flex items-center justify-center space-x-2"
+                  disabled={loading}
                 >
-                  Take Pill Now
+                  <Camera className="h-5 w-5" />
+                  <span>Take Pill with Camera</span>
+                </button>
+                
+                <button
+                  onClick={handleManualTakePill}
+                  className="btn btn-outline border-blue-500 text-blue-500 py-4 text-lg flex items-center justify-center space-x-2"
+                  disabled={loading}
+                >
+                  <Hand className="h-5 w-5" />
+                  <span>Manually Record Pill</span>
                 </button>
                 
                 <button
                   onClick={() => navigate('/')}
                   className="btn btn-outline border-gray-300 text-gray-700"
+                  disabled={loading}
                 >
                   Skip for Now
                 </button>

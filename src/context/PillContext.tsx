@@ -14,6 +14,12 @@ export interface PillSchedule {
   daysOfWeek: string[];
   active: boolean;
   color: string;
+  totalPills: number;
+  remainingPills: number;
+  expiryDate: string;
+  lastRefillDate: string;
+  refillReminderSent: boolean;
+  expiryReminderSent: boolean;
 }
 
 export interface PillHistory {
@@ -31,8 +37,10 @@ interface PillContextType {
   updateSchedule: (id: string, schedule: Partial<PillSchedule>) => void;
   deleteSchedule: (id: string) => void;
   recordPillTaken: (scheduleId: string, wasReminded: boolean) => void;
-  getTodaySchedules: () => PillSchedule[];
-  getUpcomingReminders: () => PillSchedule[];
+  getTodaySchedules: () => Promise<PillSchedule[]>;
+  getUpcomingReminders: () => Promise<PillSchedule[]>;
+  updateRemainingPills: (scheduleId: string) => Promise<void>;
+  loadSchedules: () => Promise<(() => void) | undefined>;
   loading: boolean;
   error: string | null;
 }
@@ -46,25 +54,36 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user) {
+  const loadSchedules = async () => {
+    if (!user) return;
+    
+    try {
       setLoading(true);
       setError(null);
-
-      // Subscribe to schedules collection
+      
+      // Get schedules from Firestore
       const schedulesQuery = query(
         collection(db, "schedules"),
         where("userId", "==", user.id)
       );
+      
+      const snapshot = await getDocs(schedulesQuery);
+      const schedulesData: PillSchedule[] = [];
+      snapshot.forEach((doc) => {
+        schedulesData.push({ id: doc.id, ...doc.data() } as PillSchedule);
+      });
+      console.log('Schedules loaded:', schedulesData);
+      setSchedules(schedulesData);
 
+      // Set up real-time listener for schedules
       const unsubscribe = onSnapshot(schedulesQuery, 
         (snapshot) => {
-          const schedulesData: PillSchedule[] = [];
+          const updatedSchedules: PillSchedule[] = [];
           snapshot.forEach((doc) => {
-            schedulesData.push({ id: doc.id, ...doc.data() } as PillSchedule);
+            updatedSchedules.push({ id: doc.id, ...doc.data() } as PillSchedule);
           });
-          console.log('Schedules updated:', schedulesData);
-          setSchedules(schedulesData);
+          console.log('Schedules updated:', updatedSchedules);
+          setSchedules(updatedSchedules);
           setLoading(false);
         },
         (error) => {
@@ -74,6 +93,24 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       );
 
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error loading schedules:', error);
+      setError('Failed to load schedules');
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      let unsubscribeSchedules: (() => void) | undefined;
+      
+      // Load schedules immediately when user changes
+      loadSchedules().then(unsubscribe => {
+        unsubscribeSchedules = unsubscribe;
+      });
+      
       // Subscribe to history collection
       const historyQuery = query(
         collection(db, "history"),
@@ -100,7 +137,9 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       return () => {
-        unsubscribe();
+        if (unsubscribeSchedules) {
+          unsubscribeSchedules();
+        }
         unsubscribeHistory();
       };
     }
@@ -112,7 +151,6 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     try {
-      // Validate schedule data
       if (!schedule.pillName || !schedule.dosage) {
         throw new Error('Pill name and dosage are required');
       }
@@ -130,13 +168,11 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Adding new schedule:', newSchedule);
       
-      // Add to Firestore
       const schedulesRef = collection(db, "schedules");
       const docRef = await addDoc(schedulesRef, newSchedule);
       
       console.log('Schedule added successfully with ID:', docRef.id);
       
-      // Verify the document was created
       const docSnap = await getDoc(docRef);
       if (!docSnap.exists()) {
         throw new Error('Failed to verify schedule creation');
@@ -201,20 +237,117 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const getTodaySchedules = () => {
-    const today = new Date();
-    const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
-    
-    return schedules.filter(schedule => 
-      schedule.active && schedule.daysOfWeek.includes(dayOfWeek)
-    );
+  const getTodaySchedules = async (): Promise<PillSchedule[]> => {
+    if (!user) {
+      console.error('No user found when trying to get schedules');
+      throw new Error('User must be logged in to get schedules');
+    }
+
+    try {
+      console.log('Starting getTodaySchedules for user:', user.id);
+      
+      // Validate schedules array
+      if (!Array.isArray(schedules)) {
+        console.error('Schedules is not an array:', schedules);
+        throw new Error('Invalid schedules data');
+      }
+
+      const today = new Date();
+      const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][today.getDay()];
+      console.log('Current day of week:', dayOfWeek);
+      
+      // Set time to start of day in UTC
+      const startOfDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      console.log('Start of day (UTC):', startOfDay.toISOString());
+      
+      // Get all schedules for today
+      console.log('Current schedules:', schedules);
+      const todaySchedules = schedules.filter(schedule => {
+        if (!schedule || typeof schedule !== 'object') {
+          console.error('Invalid schedule object:', schedule);
+          return false;
+        }
+        return schedule.active && schedule.daysOfWeek && schedule.daysOfWeek.includes(dayOfWeek);
+      });
+      console.log('Filtered schedules for today:', todaySchedules);
+
+      if (todaySchedules.length === 0) {
+        console.log('No active schedules found for today');
+        return [];
+      }
+      
+      // Get history for today - using a simpler query first
+      console.log('Fetching history for user:', user.id);
+      const historySnapshot = await getDocs(
+        query(
+          collection(db, "history"),
+          where("userId", "==", user.id)
+        )
+      );
+      
+      // Filter history items in memory instead of in the query
+      const takenScheduleIds = new Set();
+      historySnapshot.forEach(doc => {
+        const historyItem = doc.data();
+        console.log('History item:', historyItem);
+        if (historyItem && historyItem.status === 'taken') {
+          const takenAt = historyItem.takenAt?.toDate();
+          if (takenAt && takenAt >= startOfDay) {
+            takenScheduleIds.add(historyItem.scheduleId);
+          }
+        }
+      });
+      console.log('Taken schedule IDs:', Array.from(takenScheduleIds));
+      
+      // Filter out schedules that have already been taken today
+      const remainingSchedules = todaySchedules.filter(schedule => !takenScheduleIds.has(schedule.id));
+      console.log('Remaining schedules for today:', remainingSchedules);
+      
+      return remainingSchedules;
+    } catch (error) {
+      console.error('Error getting today\'s schedules:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message, error.stack);
+        throw new Error(`Failed to load today's schedules: ${error.message}`);
+      }
+      throw new Error('Failed to load today\'s schedules. Please try again.');
+    }
   };
 
-  const getUpcomingReminders = () => {
-    const todaySchedules = getTodaySchedules();
+  const getUpcomingReminders = async (): Promise<PillSchedule[]> => {
+    const todaySchedules = await getTodaySchedules();
     const currentHour = new Date().getHours();
     
     return todaySchedules.filter(schedule => schedule.timeHour >= currentHour);
+  };
+
+  const updateRemainingPills = async (scheduleId: string) => {
+    try {
+      const scheduleRef = doc(db, "schedules", scheduleId);
+      const scheduleDoc = await getDoc(scheduleRef);
+      
+      if (!scheduleDoc.exists()) {
+        throw new Error('Schedule not found');
+      }
+      
+      const schedule = scheduleDoc.data() as PillSchedule;
+      const newRemainingPills = Math.max(0, schedule.remainingPills - 1);
+      
+      await updateDoc(scheduleRef, {
+        remainingPills: newRemainingPills
+      });
+      
+      setSchedules(schedules.map(s => 
+        s.id === scheduleId 
+          ? { ...s, remainingPills: newRemainingPills }
+          : s
+      ));
+      
+      console.log(`Updated remaining pills for schedule ${scheduleId}: ${newRemainingPills}`);
+    } catch (error) {
+      console.error('Error updating remaining pills:', error);
+      throw error;
+    }
   };
 
   return (
@@ -227,6 +360,8 @@ export const PillProvider: React.FC<{ children: React.ReactNode }> = ({ children
       recordPillTaken,
       getTodaySchedules,
       getUpcomingReminders,
+      updateRemainingPills,
+      loadSchedules,
       loading,
       error
     }}>

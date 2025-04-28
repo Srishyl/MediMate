@@ -17,7 +17,13 @@ const PillSchedule: React.FC = () => {
     timeMinute: 0,
     daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     active: true,
-    color: 'blue-500'
+    color: 'blue-500',
+    totalPills: 0,
+    remainingPills: 0,
+    expiryDate: '',
+    lastRefillDate: new Date().toISOString().split('T')[0],
+    refillReminderSent: false,
+    expiryReminderSent: false
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -80,11 +86,25 @@ const PillSchedule: React.FC = () => {
         throw new Error('Please select at least one day of the week');
       }
 
+      if (newPill.totalPills <= 0) {
+        throw new Error('Please enter the total number of pills in the pack');
+      }
+
+      if (!newPill.expiryDate) {
+        throw new Error('Please enter the expiry date');
+      }
+
+      // Set remaining pills equal to total pills for new schedules
+      const scheduleToSave = {
+        ...newPill,
+        remainingPills: newPill.totalPills
+      };
+
       if (editingId) {
-        await updateSchedule(editingId, newPill);
+        await updateSchedule(editingId, scheduleToSave);
         setEditingId(null);
       } else {
-        await addSchedule(newPill);
+        await addSchedule(scheduleToSave);
       }
       
       setNewPill({
@@ -95,7 +115,13 @@ const PillSchedule: React.FC = () => {
         timeMinute: 0,
         daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
         active: true,
-        color: 'blue-500'
+        color: 'blue-500',
+        totalPills: 0,
+        remainingPills: 0,
+        expiryDate: '',
+        lastRefillDate: new Date().toISOString().split('T')[0],
+        refillReminderSent: false,
+        expiryReminderSent: false
       });
       
       setIsAddingNew(false);
@@ -128,7 +154,13 @@ const PillSchedule: React.FC = () => {
       timeMinute: 0,
       daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
       active: true,
-      color: 'blue-500'
+      color: 'blue-500',
+      totalPills: 0,
+      remainingPills: 0,
+      expiryDate: '',
+      lastRefillDate: new Date().toISOString().split('T')[0],
+      refillReminderSent: false,
+      expiryReminderSent: false
     });
   };
 
@@ -254,6 +286,38 @@ const PillSchedule: React.FC = () => {
                       ))}
                     </select>
                   </div>
+                </div>
+                
+                <div className="mb-4">
+                  <label htmlFor="totalPills" className="block text-gray-700 font-medium mb-2">
+                    Total Pills in Pack
+                  </label>
+                  <input
+                    type="number"
+                    id="totalPills"
+                    name="totalPills"
+                    value={newPill.totalPills}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="Enter total number of pills"
+                    min="1"
+                    required
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label htmlFor="expiryDate" className="block text-gray-700 font-medium mb-2">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    id="expiryDate"
+                    name="expiryDate"
+                    value={newPill.expiryDate}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    required
+                  />
                 </div>
               </div>
               
