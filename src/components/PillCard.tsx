@@ -55,14 +55,14 @@ const PillCard: React.FC<PillCardProps> = ({ schedule, status = 'upcoming', onCl
 
   return (
     <div 
-      className={`pill-card ${getBgColor()} hover:scale-[1.02] cursor-pointer`}
+      className={`pill-card ${getBgColor()} hover:scale-[1.02] cursor-pointer transition-transform duration-200`}
       onClick={onClick}
     >
-      <div className={`h-2 bg-${color}`}></div>
-      <div className="p-4">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-semibold text-lg">{pillName}</h3>
-          <div className="flex items-center space-x-1">
+      <div className={`h-3 bg-${color}`}></div>
+      <div className="p-5">
+        <div className="flex justify-between items-start mb-3">
+          <h3 className="font-semibold text-xl">{pillName}</h3>
+          <div className="flex items-center space-x-2">
             {getStatusIcon()}
             <span className="text-sm font-medium">
               {status === 'upcoming' && 'Upcoming'}
@@ -72,18 +72,18 @@ const PillCard: React.FC<PillCardProps> = ({ schedule, status = 'upcoming', onCl
           </div>
         </div>
         
-        <div className="text-gray-600 text-sm mb-3">
+        <div className="text-gray-600 text-base mb-4">
           {dosage}
         </div>
         
         <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className={`h-8 w-8 rounded-full bg-${color} bg-opacity-20 flex items-center justify-center`}>
-              <Clock className={`h-4 w-4 text-${color}`} />
+          <div className="flex items-center space-x-3">
+            <div className={`h-10 w-10 rounded-full bg-${color} bg-opacity-20 flex items-center justify-center`}>
+              <Clock className={`h-5 w-5 text-${color}`} />
             </div>
-            <span className="text-sm font-medium">{getTimeLabel()}</span>
+            <span className="text-base font-medium">{getTimeLabel()}</span>
           </div>
-          <span className="text-sm text-gray-600">
+          <span className="text-base text-gray-600">
             {formatTime(timeHour, timeMinute)}
           </span>
         </div>

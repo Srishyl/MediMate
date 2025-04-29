@@ -1,5 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Camera, Check } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import * as mp from '@mediapipe/hands';
+import { Camera } from '@mediapipe/camera_utils';
+import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
+import { HAND_CONNECTIONS } from '@mediapipe/hands';
 
 interface CameraDetectionProps {
   onPillTaken: () => void;
@@ -7,146 +10,181 @@ interface CameraDetectionProps {
 
 const CameraDetection: React.FC<CameraDetectionProps> = ({ onPillTaken }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isActive, setIsActive] = useState(false);
-  const [isPillDetected, setIsPillDetected] = useState(false);
-  const [isHandToMouthDetected, setIsHandToMouthDetected] = useState(false);
-  const [detectionStage, setDetectionStage] = useState<string>('waiting');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [handToMouthProgress, setHandToMouthProgress] = useState(0);
+  const [hands, setHands] = useState<mp.Hands | null>(null);
 
-  // Initialize camera when component mounts
+  // Constants for detection
+  const MOUTH_Y_POSITION = 0.3; // Approximate mouth position (30% from top)
+  const DISTANCE_THRESHOLD = 0.40; // Distance threshold for hand near mouth
+  const REQUIRED_FRAMES = 15; // Number of frames required for verification
+
   useEffect(() => {
-    if (isActive && videoRef.current) {
-      const startCamera = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
+    let stream: MediaStream | null = null;
+
+    const setupCamera = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        setError('Failed to access camera. Please ensure camera permissions are granted.');
+        console.error('Camera access error:', err);
+      }
+    };
+
+    const initializeHands = () => {
+      const hands = new mp.Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+      });
+
+      hands.onResults((results) => {
+        if (!canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw camera feed
+        if (videoRef.current) {
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        }
+
+        // Draw hand landmarks
+        if (results.multiHandLandmarks) {
+          for (const landmarks of results.multiHandLandmarks) {
+            drawConnectors(
+              ctx, landmarks, HAND_CONNECTIONS,
+              { color: '#00FF00', lineWidth: 2 }
+            );
+            drawLandmarks(
+              ctx, landmarks,
+              { color: '#FF0000', lineWidth: 1 }
+            );
+
+            // Draw approximate mouth position line
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.moveTo(0, canvas.height * MOUTH_Y_POSITION);
+            ctx.lineTo(canvas.width, canvas.height * MOUTH_Y_POSITION);
+            ctx.stroke();
           }
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-          // For demo purposes, we'll simulate the detection process
-          simulateDetectionProcess();
         }
-      };
 
-      startCamera();
-      
-      return () => {
-        // Clean up camera stream
-        if (videoRef.current && videoRef.current.srcObject) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          stream.getTracks().forEach(track => track.stop());
+        // Check for hand-to-mouth movement
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          const landmarks = results.multiHandLandmarks[0];
+          const indexTip = landmarks[8]; // Index fingertip
+          
+          // Calculate distance from hand to mouth area
+          const distanceToMouth = Math.abs(indexTip.y - MOUTH_Y_POSITION);
+
+          if (distanceToMouth < DISTANCE_THRESHOLD) {
+            setHandToMouthProgress(prev => {
+              const newProgress = Math.min(prev + 1, REQUIRED_FRAMES);
+              if (newProgress === REQUIRED_FRAMES) {
+                onPillTaken();
+                return 0;
+              }
+              return newProgress;
+            });
+          } else {
+            setHandToMouthProgress(0);
+          }
+
+          // Draw debug info
+          if (ctx) {
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'white';
+            ctx.fillText(`Distance to mouth: ${distanceToMouth.toFixed(3)}`, 10, 30);
+          }
         }
-      };
-    }
-  }, [isActive]);
+      });
 
-  const startDetection = () => {
-    setIsActive(true);
-    setDetectionStage('searching');
-  };
+      setHands(hands);
+    };
 
-  // Simulate the detection process for demo purposes
-  const simulateDetectionProcess = () => {
-    // Simulate pill detection after 2 seconds
-    setTimeout(() => {
-      setIsPillDetected(true);
-      setDetectionStage('pill_detected');
-      
-      // Simulate hand-to-mouth detection after another 3 seconds
-      setTimeout(() => {
-        setIsHandToMouthDetected(true);
-        setDetectionStage('hand_to_mouth');
-        
-        // Complete the process after 1 more second
-        setTimeout(() => {
-          setDetectionStage('completed');
-          onPillTaken();
-        }, 1000);
-      }, 3000);
-    }, 2000);
-  };
+    const initialize = async () => {
+      await setupCamera();
+      initializeHands();
+    };
 
-  const getDetectionMessage = () => {
-    switch (detectionStage) {
-      case 'waiting':
-        return 'Press "Start Detection" to begin';
-      case 'searching':
-        return 'Show the pill to the camera...';
-      case 'pill_detected':
-        return 'Pill detected! Now take your pill...';
-      case 'hand_to_mouth':
-        return 'Hand-to-mouth motion detected!';
-      case 'completed':
-        return 'Pill taken successfully!';
-      default:
-        return 'Waiting for detection...';
-    }
-  };
+    initialize();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (hands) {
+        hands.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hands || !videoRef.current || !canvasRef.current) return;
+
+    const camera = new Camera(videoRef.current, {
+      onFrame: async () => {
+        if (videoRef.current) {
+          await hands.send({ image: videoRef.current });
+        }
+      },
+      width: 640,
+      height: 480
+    });
+
+    camera.start();
+
+    return () => {
+      camera.stop();
+    };
+  }, [hands]);
 
   return (
-    <div className="camera-detection w-full max-w-md mx-auto">
-      <div className="bg-white rounded-xl overflow-hidden shadow-lg">
-        {!isActive ? (
-          <div className="aspect-video bg-gray-100 flex flex-col items-center justify-center text-center p-6">
-            <Camera className="h-16 w-16 text-blue-500 mb-4" />
-            <h3 className="text-lg font-medium mb-2">Pill Detection</h3>
-            <p className="text-gray-600 mb-4">
-              When ready to take your pill, we'll use your camera to verify you've taken it correctly.
-            </p>
-            <button
-              onClick={startDetection}
-              className="btn btn-primary"
-            >
-              Start Detection
-            </button>
-          </div>
-        ) : (
-          <div className="relative">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full aspect-video object-cover"
+    <div className="relative">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className="w-full rounded-lg"
+      />
+      <canvas
+        ref={canvasRef}
+        className="absolute top-0 left-0 w-full h-full"
+      />
+      {error && (
+        <div className="mt-4 bg-red-50 text-red-600 p-3 rounded-lg">
+          {error}
+        </div>
+      )}
+      <div className="mt-4 text-center">
+        <p className="text-gray-600">
+          {handToMouthProgress > 0 
+            ? `Verifying hand-to-mouth movement... (${handToMouthProgress}/${REQUIRED_FRAMES})`
+            : 'Move your hand to your mouth to verify pill intake'}
+        </p>
+        {handToMouthProgress > 0 && (
+          <div className="w-full h-2 bg-gray-200 rounded-full mt-2">
+            <div 
+              className="h-full bg-green-500 rounded-full transition-all duration-200"
+              style={{ width: `${(handToMouthProgress / REQUIRED_FRAMES) * 100}%` }}
             />
-            
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-50">
-              {detectionStage === 'completed' ? (
-                <div className="text-center text-white p-4">
-                  <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mx-auto mb-4">
-                    <Check className="h-10 w-10 text-white" />
-                  </div>
-                  <p className="text-xl font-bold">{getDetectionMessage()}</p>
-                </div>
-              ) : (
-                <div className="text-center text-white p-4">
-                  <div className={`w-24 h-24 rounded-full border-4 border-dashed ${
-                    isPillDetected ? 'border-green-400' : 'border-yellow-400'
-                  } animate-spin-slow flex items-center justify-center mx-auto mb-4`}>
-                    <div className={`w-16 h-16 rounded-full ${
-                      isPillDetected ? 'bg-green-400' : 'bg-yellow-400'
-                    } bg-opacity-30 flex items-center justify-center`}>
-                      <Camera className="h-8 w-8 text-white" />
-                    </div>
-                  </div>
-                  <p className="text-xl font-bold">{getDetectionMessage()}</p>
-                  
-                  {isPillDetected && (
-                    <div className="mt-4 flex flex-col items-center">
-                      <div className="w-full bg-gray-300 rounded-full h-2.5 mb-2">
-                        <div 
-                          className="bg-blue-500 h-2.5 rounded-full transition-all duration-500"
-                          style={{ width: isHandToMouthDetected ? '100%' : '50%' }}
-                        ></div>
-                      </div>
-                      <p className="text-sm">
-                        {isHandToMouthDetected ? 'Hand-to-mouth detected' : 'Pill detected'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
