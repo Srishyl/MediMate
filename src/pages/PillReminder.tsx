@@ -146,7 +146,7 @@ const PillReminder: React.FC = () => {
   }
 
   return (
-    <div className="pb-16 md:pb-0 md:pl-64 flex flex-col items-center">
+    <div className="min-h-screen flex items-center justify-center px-4 md:px-8">
       <div className="w-full max-w-2xl">
         {pillTaken ? (
           // Success state
